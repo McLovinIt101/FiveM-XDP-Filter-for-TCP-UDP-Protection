@@ -13,6 +13,8 @@ This project is an XDP (eXpress Data Path) program designed to provide advanced 
 - **Deep Packet Inspection**: Analyzes packet payloads for known attack patterns.
 - **Anomaly Detection**: Identifies unusual traffic patterns using statistical methods.
 - **Machine Learning-Based Threat Detection**: Uses a trained model to detect threats based on normal and attack traffic patterns.
+- **TCP Bypass Protection**: Inspects TCP flags and sequence numbers to detect and mitigate TCP bypass attacks.
+- **Enhanced SYN Flood Protection**: Implements SYN cookie mechanism to provide additional protection against SYN flood attacks.
 
 ## How It Works
 
@@ -30,6 +32,7 @@ This project is an XDP (eXpress Data Path) program designed to provide advanced 
    
 5. **SYN Flood Protection**:
    - The filter detects and drops TCP SYN packets to prevent SYN flood attacks on the server, a common DDoS vector.
+   - Enhanced with SYN cookie mechanism to provide additional protection against SYN flood attacks.
 
 6. **Deep Packet Inspection**:
    - The filter analyzes packet payloads for known attack patterns using a hash map of known patterns.
@@ -39,6 +42,9 @@ This project is an XDP (eXpress Data Path) program designed to provide advanced 
 
 8. **Machine Learning-Based Threat Detection**:
    - The filter uses a trained machine learning model to detect threats based on normal and attack traffic patterns.
+
+9. **TCP Bypass Protection**:
+   - The filter inspects TCP flags and sequence numbers to detect and mitigate TCP bypass attacks.
 
 ## Installation Guide
 

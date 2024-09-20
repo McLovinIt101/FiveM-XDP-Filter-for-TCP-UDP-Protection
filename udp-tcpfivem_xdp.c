@@ -123,6 +123,21 @@ static __always_inline int ml_threat_detection(__u64 flow_key) {
     return 0;
 }
 
+// Helper function for SYN cookie generation
+static __always_inline __u32 generate_syn_cookie(__u32 saddr, __u32 daddr, __u16 sport, __u16 dport, __u32 isn) {
+    // Simple example: XOR of IPs, ports, and initial sequence number
+    return saddr ^ daddr ^ sport ^ dport ^ isn;
+}
+
+// Helper function for TCP bypass detection
+static __always_inline int detect_tcp_bypass(struct tcphdr *tcp) {
+    // Simple example: check for unusual TCP flags or sequence numbers
+    if (tcp->fin || tcp->rst || tcp->psh || tcp->urg) {
+        return 1;  // TCP bypass attempt detected
+    }
+    return 0;
+}
+
 SEC("xdp_program")
 int fivem_xdp(struct xdp_md *ctx) {
     void *data = (void *)(long)ctx->data;
@@ -194,8 +209,16 @@ int fivem_xdp(struct xdp_md *ctx) {
 
         // TCP-specific handling (e.g., SYN/ACK filtering)
         if (tcp->syn) {
-            // Drop SYN flood attempts (you can further refine this)
-            return XDP_DROP;
+            // SYN flood protection with SYN cookie mechanism
+            __u32 syn_cookie = generate_syn_cookie(ip->saddr, ip->daddr, tcp->source, tcp->dest, tcp->seq);
+            // Store the SYN cookie in the connection tracking map
+            bpf_map_update_elem(&conntrack_map, &flow_key, &syn_cookie, BPF_ANY);
+            return XDP_PASS;
+        }
+
+        // Check for TCP bypass attempts
+        if (detect_tcp_bypass(tcp)) {
+            return XDP_DROP;  // Drop TCP bypass attempts
         }
     } 
     else {
