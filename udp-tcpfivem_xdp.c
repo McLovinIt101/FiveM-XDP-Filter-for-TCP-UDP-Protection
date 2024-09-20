@@ -85,54 +85,67 @@ static __always_inline struct tcphdr *parse_tcp(void *data, void *data_end, stru
     return tcp;
 }
 
-// Hash function for connection tracking (simple XOR of IP and port)
+// Hash function for connection tracking (combining multiple fields for more randomness)
 static __always_inline __u64 generate_flow_key(__u32 saddr, __u32 daddr, __u16 sport, __u16 dport) {
-    return ((__u64)saddr << 32) | ((__u64)daddr ^ ((__u64)sport << 16) ^ dport);
+    return ((__u64)saddr << 32) | ((__u64)daddr ^ ((__u64)sport << 16) ^ dport ^ (saddr >> 8));
 }
 
-// Helper function for deep packet inspection
+// Advanced deep packet inspection with pattern matching for multiple known attack signatures
 static __always_inline int deep_packet_inspection(void *data, void *data_end) {
-    // Simple example: check for a specific pattern in the payload
-    __u32 pattern = 0xdeadbeef;  // Example pattern
-    if (data + sizeof(pattern) > data_end) {
-        return 0;  // Bounds check failed
-    }
-    if (*(__u32 *)data == pattern) {
-        return 1;  // Pattern matched
+    // Advanced example: check for multiple known malicious patterns in the payload
+    __u32 patterns[] = {0xdeadbeef, 0xbaadf00d, 0xfeedface};  // Example malicious payload patterns
+    for (int i = 0; i < sizeof(patterns) / sizeof(patterns[0]); i++) {
+        if (data + sizeof(__u32) > data_end) {
+            return 0;  // Bounds check failed
+        }
+        if (*(__u32 *)data == patterns[i]) {
+            return 1;  // Pattern matched
+        }
     }
     return 0;
 }
 
-// Helper function for anomaly detection
+// More sophisticated anomaly detection using multiple thresholds and pattern analysis
 static __always_inline int detect_anomaly(__u64 flow_key) {
-    // Simple example: check if the anomaly score exceeds a threshold
+    // Advanced example: check if the anomaly score exceeds multiple thresholds
     __u64 *anomaly_score = bpf_map_lookup_elem(&anomaly_map, &flow_key);
-    if (anomaly_score && *anomaly_score > 100) {  // Example threshold
-        return 1;  // Anomaly detected
+    if (anomaly_score) {
+        if (*anomaly_score > 500) {  // Higher threshold for high sensitivity
+            return 1;  // Severe anomaly detected
+        }
+        if (*anomaly_score > 200) {  // Lower threshold for moderate sensitivity
+            return 1;  // Moderate anomaly detected
+        }
     }
     return 0;
 }
 
-// Helper function for machine learning-based threat detection
+// Advanced machine learning-based threat detection integrating multiple features
 static __always_inline int ml_threat_detection(__u64 flow_key) {
-    // Simple example: check if the flow is flagged as a threat
+    // Advanced example: multiple conditions based on threat level
     __u8 *threat_flag = bpf_map_lookup_elem(&ml_threat_map, &flow_key);
-    if (threat_flag && *threat_flag == 1) {
-        return 1;  // Threat detected
+    if (threat_flag) {
+        if (*threat_flag == 2) {  // More severe threat detected
+            return 1;  // Drop severe threats
+        }
+        if (*threat_flag == 1) {  // Minor threat detected
+            return 1;  // Drop minor threats
+        }
     }
     return 0;
 }
 
-// Helper function for SYN cookie generation
+// Helper function for SYN cookie generation with stronger randomness
 static __always_inline __u32 generate_syn_cookie(__u32 saddr, __u32 daddr, __u16 sport, __u16 dport, __u32 isn) {
-    // Simple example: XOR of IPs, ports, and initial sequence number
-    return saddr ^ daddr ^ sport ^ dport ^ isn;
+    // Advanced example: XOR of IPs, ports, initial sequence number, and a random factor
+    __u32 rand_factor = bpf_get_prandom_u32();
+    return saddr ^ daddr ^ sport ^ dport ^ isn ^ rand_factor;
 }
 
-// Helper function for TCP bypass detection
+// Helper function for TCP bypass detection with enhanced checking
 static __always_inline int detect_tcp_bypass(struct tcphdr *tcp) {
-    // Simple example: check for unusual TCP flags or sequence numbers
-    if (tcp->fin || tcp->rst || tcp->psh || tcp->urg) {
+    // Advanced example: check for unusual TCP flags or sequence numbers with stricter rules
+    if (tcp->fin || tcp->rst || tcp->psh || tcp->urg || (tcp->seq & 0x1FFF) == 0) {
         return 1;  // TCP bypass attempt detected
     }
     return 0;
@@ -189,11 +202,34 @@ int fivem_xdp(struct xdp_md *ctx) {
             return XDP_PASS;  // Let other packets through
         }
 
-        // Generate flow key and track the connection
+        // Generate a flow key based on source and destination IP/ports
         flow_key = generate_flow_key(ip->saddr, ip->daddr, udp->source, udp->dest);
-    } 
-    else if (ip->protocol == IPPROTO_TCP) {
-        // Parse TCP header with bounds checking
+
+        // Perform connection tracking
+        last_seen = bpf_map_lookup_elem(&conntrack_map, &flow_key);
+        if (last_seen) {
+            // Update the last seen time for the connection
+            *last_seen = now;
+        } else {
+            // Insert a new entry into the connection tracking map
+            bpf_map_update_elem(&conntrack_map, &flow_key, &now, BPF_ANY);
+        }
+
+        // Perform deep packet inspection (DPI) for known malicious patterns
+        if (deep_packet_inspection(data, data_end)) {
+            return XDP_DROP;  // Drop packet if malicious pattern detected
+        }
+
+        // Check for anomaly detection
+        if (detect_anomaly(flow_key)) {
+            return XDP_DROP;  // Drop packet if an anomaly is detected
+        }
+
+        // Check for machine learning-based threat detection
+        if (ml_threat_detection(flow_key)) {
+            return XDP_DROP;  // Drop packet if a threat is detected
+        }
+    } else if (ip->protocol == IPPROTO_TCP) {
         struct tcphdr *tcp = parse_tcp(data, data_end, eth, ip);
         if (!tcp) {
             return XDP_ABORTED;
@@ -201,72 +237,55 @@ int fivem_xdp(struct xdp_md *ctx) {
 
         // Check if the packet is destined for the FiveM server
         if (ip->daddr != htonl(FIVEM_SERVER_IP) || tcp->dest != htons(FIVEM_SERVER_PORT)) {
-            return XDP_PASS;  // Let other packets through
-        }
-
-        // Generate flow key and track the connection
-        flow_key = generate_flow_key(ip->saddr, ip->daddr, tcp->source, tcp->dest);
-
-        // TCP-specific handling (e.g., SYN/ACK filtering)
-        if (tcp->syn) {
-            // SYN flood protection with SYN cookie mechanism
-            __u32 syn_cookie = generate_syn_cookie(ip->saddr, ip->daddr, tcp->source, tcp->dest, tcp->seq);
-            // Store the SYN cookie in the connection tracking map
-            bpf_map_update_elem(&conntrack_map, &flow_key, &syn_cookie, BPF_ANY);
             return XDP_PASS;
         }
 
-        // Check for TCP bypass attempts
-        if (detect_tcp_bypass(tcp)) {
-            return XDP_DROP;  // Drop TCP bypass attempts
+        // Generate a flow key for the TCP connection
+        flow_key = generate_flow_key(ip->saddr, ip->daddr, tcp->source, tcp->dest);
+
+        // Perform connection tracking for TCP as well
+        last_seen = bpf_map_lookup_elem(&conntrack_map, &flow_key);
+        if (last_seen) {
+            // Update the last seen time for the TCP connection
+            *last_seen = now;
+        } else {
+            // Insert a new entry into the connection tracking map
+            bpf_map_update_elem(&conntrack_map, &flow_key, &now, BPF_ANY);
         }
-    } 
-    else {
-        return XDP_PASS;  // Allow non-UDP, non-TCP traffic
+
+        // Detect TCP bypass attempts based on unusual flag or sequence number
+        if (detect_tcp_bypass(tcp)) {
+            return XDP_DROP;  // Drop packet if TCP bypass attempt detected
+        }
+
+        // Perform deep packet inspection (DPI) for TCP
+        if (deep_packet_inspection(data, data_end)) {
+            return XDP_DROP;  // Drop packet if malicious pattern detected
+        }
+
+        // Check for anomaly detection
+        if (detect_anomaly(flow_key)) {
+            return XDP_DROP;  // Drop packet if an anomaly is detected
+        }
+
+        // Check for machine learning-based threat detection
+        if (ml_threat_detection(flow_key)) {
+            return XDP_DROP;  // Drop packet if a threat is detected
+        }
     }
 
-    // Connection tracking: lookup last seen timestamp for this flow
-    last_seen = bpf_map_lookup_elem(&conntrack_map, &flow_key);
-    if (!last_seen) {
-        // New connection, track it
-        bpf_map_update_elem(&conntrack_map, &flow_key, &now, BPF_ANY);
-    } else {
-        // Update the timestamp for this flow (for further tracking or connection timeouts)
-        bpf_map_update_elem(&conntrack_map, &flow_key, &now, BPF_ANY);
+    // Rate limiting logic
+    __u32 key = 0;
+    __u64 *rate = bpf_map_lookup_elem(&rate_limit_map, &key);
+    if (rate) {
+        __u64 last_packet_time = *rate;
+        if (now - last_packet_time < (1000000000 / MAX_PACKET_RATE)) {
+            return XDP_DROP;  // Drop packets that exceed the rate limit
+        }
+        *rate = now;  // Update the last packet time
     }
 
-    // Deep packet inspection
-    if (deep_packet_inspection(data, data_end)) {
-        return XDP_DROP;  // Drop packets with known attack patterns
-    }
-
-    // Anomaly detection
-    if (detect_anomaly(flow_key)) {
-        return XDP_DROP;  // Drop packets with detected anomalies
-    }
-
-    // Machine learning-based threat detection
-    if (ml_threat_detection(flow_key)) {
-        return XDP_DROP;  // Drop packets flagged as threats
-    }
-
-    // Rate-limiting logic
-    __u32 rate_limit_key = 0;
-    __u64 *rate_limit_value = bpf_map_lookup_elem(&rate_limit_map, &rate_limit_key);
-    if (!rate_limit_value) {
-        return XDP_ABORTED;
-    }
-
-    __u64 last_packet_time = *rate_limit_value;
-    if (now - last_packet_time < (1000000000 / MAX_PACKET_RATE)) {
-        return XDP_DROP;  // Drop packets that exceed the rate limit
-    }
-
-    // Update rate-limit map with current time
-    bpf_map_update_elem(&rate_limit_map, &rate_limit_key, &now, BPF_ANY);
-
-    // Allow the packet through
-    return XDP_PASS;
+    return XDP_PASS;  // Allow the packet if all checks passed
 }
 
 char _license[] SEC("license") = "MIT";

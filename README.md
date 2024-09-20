@@ -192,6 +192,24 @@ You can modify these parameters directly in the fivem_xdp.c file and recompile t
 1. **Load the Model**:
    - Load the trained model into the XDP program. This may involve reading the model from a file or embedding it directly in the code.
 
+      #### Embedding the Model Directly in the Code
+   - Convert the trained model into a C array or a similar format that can be included in the XDP program.
+   - For example, if the model is a decision tree, you can convert it into a series of if-else statements or a lookup table.
+
+   ```c
+   // Example of embedding a simple decision tree model
+   int predict_threat(__u64 flow_key) {
+       // Example decision tree logic
+       if (flow_key < 1000) {
+           return 0;  // Not a threat
+       } else if (flow_key < 2000) {
+           return 1;  // Threat
+       } else {
+           return 0;  // Not a threat
+       }
+   }
+   ```
+
 2. **Feature Extraction**:
    - Extract features from incoming packets and use the model to predict whether the packet is a threat.
 
