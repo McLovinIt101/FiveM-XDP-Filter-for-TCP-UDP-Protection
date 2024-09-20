@@ -43,6 +43,30 @@ struct {
     __uint(max_entries, 4096); // Max number of tracked connections
 } conntrack_map SEC(".maps");
 
+// Deep packet inspection map for known attack patterns
+struct {
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __type(key, __u32);  // Pattern hash
+    __type(value, __u8); // Attack flag (1 = attack)
+    __uint(max_entries, 256);
+} dpi_map SEC(".maps");
+
+// Anomaly detection map for statistical traffic patterns
+struct {
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __type(key, __u64);  // Flow key
+    __type(value, __u64); // Anomaly score
+    __uint(max_entries, 4096);
+} anomaly_map SEC(".maps");
+
+// Machine learning-based threat detection map
+struct {
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __type(key, __u64);  // Flow key
+    __type(value, __u8); // Threat flag (1 = threat)
+    __uint(max_entries, 4096);
+} ml_threat_map SEC(".maps");
+
 // Helper function for parsing UDP
 static __always_inline struct udphdr *parse_udp(void *data, void *data_end, struct ethhdr *eth, struct iphdr *ip) {
     struct udphdr *udp = (struct udphdr *)((__u8 *)ip + sizeof(struct iphdr));
@@ -64,6 +88,39 @@ static __always_inline struct tcphdr *parse_tcp(void *data, void *data_end, stru
 // Hash function for connection tracking (simple XOR of IP and port)
 static __always_inline __u64 generate_flow_key(__u32 saddr, __u32 daddr, __u16 sport, __u16 dport) {
     return ((__u64)saddr << 32) | ((__u64)daddr ^ ((__u64)sport << 16) ^ dport);
+}
+
+// Helper function for deep packet inspection
+static __always_inline int deep_packet_inspection(void *data, void *data_end) {
+    // Simple example: check for a specific pattern in the payload
+    __u32 pattern = 0xdeadbeef;  // Example pattern
+    if (data + sizeof(pattern) > data_end) {
+        return 0;  // Bounds check failed
+    }
+    if (*(__u32 *)data == pattern) {
+        return 1;  // Pattern matched
+    }
+    return 0;
+}
+
+// Helper function for anomaly detection
+static __always_inline int detect_anomaly(__u64 flow_key) {
+    // Simple example: check if the anomaly score exceeds a threshold
+    __u64 *anomaly_score = bpf_map_lookup_elem(&anomaly_map, &flow_key);
+    if (anomaly_score && *anomaly_score > 100) {  // Example threshold
+        return 1;  // Anomaly detected
+    }
+    return 0;
+}
+
+// Helper function for machine learning-based threat detection
+static __always_inline int ml_threat_detection(__u64 flow_key) {
+    // Simple example: check if the flow is flagged as a threat
+    __u8 *threat_flag = bpf_map_lookup_elem(&ml_threat_map, &flow_key);
+    if (threat_flag && *threat_flag == 1) {
+        return 1;  // Threat detected
+    }
+    return 0;
 }
 
 SEC("xdp_program")
@@ -153,6 +210,21 @@ int fivem_xdp(struct xdp_md *ctx) {
     } else {
         // Update the timestamp for this flow (for further tracking or connection timeouts)
         bpf_map_update_elem(&conntrack_map, &flow_key, &now, BPF_ANY);
+    }
+
+    // Deep packet inspection
+    if (deep_packet_inspection(data, data_end)) {
+        return XDP_DROP;  // Drop packets with known attack patterns
+    }
+
+    // Anomaly detection
+    if (detect_anomaly(flow_key)) {
+        return XDP_DROP;  // Drop packets with detected anomalies
+    }
+
+    // Machine learning-based threat detection
+    if (ml_threat_detection(flow_key)) {
+        return XDP_DROP;  // Drop packets flagged as threats
     }
 
     // Rate-limiting logic

@@ -10,6 +10,9 @@ This project is an XDP (eXpress Data Path) program designed to provide advanced 
 - **SYN Flood Protection**: Drops excessive TCP SYN packets to mitigate SYN flood attacks.
 - **Dynamic Blocklist/Allowlist**: Allows blocking and allowing IP addresses dynamically via BPF maps.
 - **High Performance**: Runs in the kernel using XDP, which offers high-speed packet filtering before traffic reaches user space.
+- **Deep Packet Inspection**: Analyzes packet payloads for known attack patterns.
+- **Anomaly Detection**: Identifies unusual traffic patterns using statistical methods.
+- **Machine Learning-Based Threat Detection**: Uses a trained model to detect threats based on normal and attack traffic patterns.
 
 ## How It Works
 
@@ -27,6 +30,15 @@ This project is an XDP (eXpress Data Path) program designed to provide advanced 
    
 5. **SYN Flood Protection**:
    - The filter detects and drops TCP SYN packets to prevent SYN flood attacks on the server, a common DDoS vector.
+
+6. **Deep Packet Inspection**:
+   - The filter analyzes packet payloads for known attack patterns using a hash map of known patterns.
+
+7. **Anomaly Detection**:
+   - The filter uses statistical methods to identify unusual traffic patterns and assigns anomaly scores to flows.
+
+8. **Machine Learning-Based Threat Detection**:
+   - The filter uses a trained machine learning model to detect threats based on normal and attack traffic patterns.
 
 ## Installation Guide
 
@@ -51,6 +63,13 @@ sudo apt-get install clang llvm libelf-dev iproute2
    - You will also need the libbpf library to handle BPF map interactions.
    ```bash
    sudo apt-get install libbpf-dev
+   ```
+
+5. **Python**:
+   - Install Python and necessary libraries for training the machine learning model.
+   ```bash
+   sudo apt-get install python3 python3-pip
+   pip3 install scikit-learn numpy pandas
    ```
 
 ### Building and Loading the XDP Filter
@@ -121,6 +140,57 @@ This will remove the XDP program from the specified interface.
 - **BLOCKED_IP_LIST_MAX**: The maximum number of entries in the blocklist/allowlist (default is 128).
 
 You can modify these parameters directly in the fivem_xdp.c file and recompile the program.
+
+## Training and Using the Machine Learning Model
+
+### Training the Model
+
+1. **Collect Data**:
+   - Collect normal and attack traffic data. Save the data in CSV format with appropriate labels.
+
+2. **Train the Model**:
+   - Use the following Python script to train a machine learning model using scikit-learn:
+
+   ```python
+   import pandas as pd
+   from sklearn.model_selection import train_test_split
+   from sklearn.ensemble import RandomForestClassifier
+   from sklearn.metrics import accuracy_score
+   import joblib
+
+   # Load data
+   data = pd.read_csv('traffic_data.csv')
+   X = data.drop('label', axis=1)
+   y = data['label']
+
+   # Split data into training and testing sets
+   X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+   # Train the model
+   model = RandomForestClassifier(n_estimators=100, random_state=42)
+   model.fit(X_train, y_train)
+
+   # Evaluate the model
+   y_pred = model.predict(X_test)
+   print(f'Accuracy: {accuracy_score(y_test, y_pred)}')
+
+   # Save the model
+   joblib.dump(model, 'ml_model.joblib')
+   ```
+
+3. **Deploy the Model**:
+   - Convert the trained model to a format that can be used in the XDP program. This may involve exporting the model to a C header file or using a custom format.
+
+### Using the Model in the XDP Program
+
+1. **Load the Model**:
+   - Load the trained model into the XDP program. This may involve reading the model from a file or embedding it directly in the code.
+
+2. **Feature Extraction**:
+   - Extract features from incoming packets and use the model to predict whether the packet is a threat.
+
+3. **Threat Detection**:
+   - Use the model's predictions to drop packets flagged as threats.
 
 ## Debugging
 
