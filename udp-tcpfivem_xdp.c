@@ -151,6 +151,18 @@ static __always_inline int detect_tcp_bypass(struct tcphdr *tcp) {
     return 0;
 }
 
+static __always_inline int handle_tcp_syn_flood(struct iphdr *ip, struct tcphdr *tcp) {
+    //(SYN = 1, ACK = 0)
+    if (tcp->syn && !tcp->ack) {
+        // Generate a SYN cookie based on the source and destination IP/ports
+        __u32 syn_cookie = generate_syn_cookie(ip->saddr, ip->daddr, tcp->source, tcp->dest, tcp->seq);
+        if (tcp->seq != syn_cookie) {
+            return XDP_DROP;  // Invalid SYN cookie, likely part of a SYN flood attack
+        }
+    }
+    return XDP_PASS;
+}
+
 SEC("xdp_program")
 int fivem_xdp(struct xdp_md *ctx) {
     void *data = (void *)(long)ctx->data;
@@ -200,6 +212,11 @@ int fivem_xdp(struct xdp_md *ctx) {
         // Check if the packet is destined for the FiveM server
         if (ip->daddr != htonl(FIVEM_SERVER_IP) || udp->dest != htons(FIVEM_SERVER_PORT)) {
             return XDP_PASS;  // Let other packets through
+        }
+
+        // Handle SYN flood mitigation
+        if (handle_tcp_syn_flood(ip, tcp) == XDP_DROP) {
+            return XDP_DROP;
         }
 
         // Generate a flow key based on source and destination IP/ports
